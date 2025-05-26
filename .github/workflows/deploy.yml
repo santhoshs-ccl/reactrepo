@@ -1,4 +1,4 @@
-name: Auto Deploy Successgyn to EC2
+name: Auto Deploy react to EC2
 
 on:
   push:
