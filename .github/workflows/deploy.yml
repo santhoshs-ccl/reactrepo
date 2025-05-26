@@ -1,15 +1,15 @@
-name: Auto Deploy react to EC2
+kname: Auto Deploy React to EC2 with Apache
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Ubuntu instance
+      - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -18,7 +18,8 @@ jobs:
           port: ${{ secrets.EC2_PORT }}
           script: |
             cd /var/www/reactrepo
+            git reset --hard
             git pull origin main
             npm install
             npm run build
-            npm start
+            sudo systemctl restart apache2
