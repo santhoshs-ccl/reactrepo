@@ -1,4 +1,4 @@
-kname: Auto Deploy React to EC2 with Apache
+name: Auto Deploy React to EC2 with Apache
 
 on:
   push:
