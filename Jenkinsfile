@@ -4,7 +4,7 @@ pipeline {
     stages {
         stage('Pull Latest Code') {
             steps {
-                dir('/var/www/reactrepo') {
+                dir('/home/ubuntu/reactrepo') {
                     sh '''
                         git reset --hard
                         git pull origin main
@@ -15,7 +15,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                dir('/var/www/reactrepo') {
+                dir('/home/ubuntu/reactrepo') {
                     sh 'npm install'
                 }
             }
@@ -23,7 +23,7 @@ pipeline {
 
         stage('Build React App') {
             steps {
-                dir('/var/www/reactrepo') {
+                dir('/home/ubuntu/reactrepo') {
                     sh 'npm run build'
                 }
             }
