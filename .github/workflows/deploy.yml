@@ -34,7 +34,7 @@ jobs:
       # 4️⃣ Initialize Terraform
       - name: Terraform Init
         run: terraform init
-        working-directory: ./terraform
+        working-directory: terraform
 
       # 5️⃣ Apply Terraform (automatically builds & pushes Docker image)
       - name: Terraform Apply
