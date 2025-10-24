@@ -1,4 +1,4 @@
-name: Terraform Deployment
+name: Terraform + Docker CI/CD
 
 on:
   push:
@@ -6,28 +6,18 @@ on:
       - main
 
 jobs:
-  terraform:
+  terraform-docker:
     runs-on: ubuntu-latest
 
     env:
       AWS_REGION: us-east-1
 
     steps:
-      # 1. Checkout repo
+      # 1. Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Show repo structure for debugging
-      - name: Debug:Listrepofiles
-        run: |
-          echo "Current directory:"
-          pwd
-          echo "Files in repo root:"
-          ls -l
-          echo "Check if terraform folder exists:"
-          ls -l terraform || echo "terraform folder not found!"
-
-      # 3. Configure AWS credentials
+      # 2. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -35,18 +25,42 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 4. Setup Terraform
+      # 3. Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: 1.7.5  # stable version
+          terraform_version: 1.7.5
 
-      # 5. Terraform init
+      # 4. Terraform init
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # 6. Terraform apply
+      # 5. Terraform apply
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve
+
+      # 6. Get ECR repository URL
+      - name: Get ECR URL
+        id: ecr
+        working-directory: terraform
+        run: echo "ECR_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
+
+      # 7. Login to ECR
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+          docker login --username AWS --password-stdin ${{ env.ECR_URL }}
+
+      # 8. Build Docker image
+      - name: Build Docker image
+        run: docker build -t dev-react-frontend:latest .
+
+      # 9. Tag Docker image for ECR
+      - name: Tag Docker image
+        run: docker tag dev-react-frontend:latest ${{ env.ECR_URL }}:latest
+
+      # 10. Push Docker image
+      - name: Push Docker image
+        run: docker push ${{ env.ECR_URL }}:latest
