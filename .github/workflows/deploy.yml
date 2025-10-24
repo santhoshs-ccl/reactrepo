@@ -32,11 +32,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       # 4️⃣ Initialize Terraform
+      # 4. Terraform init
       - name: Terraform Init
+        working-directory: terraform
         run: terraform init
-        working-directory: ./reactrepo/terraform
 
-      # 5️⃣ Apply Terraform (will create ECR + build/push Docker)
+      # 5. Terraform apply
       - name: Terraform Apply
+        working-directory: terraform
         run: terraform apply -auto-approve
-        working-directory: ./reactrepo/terraform
