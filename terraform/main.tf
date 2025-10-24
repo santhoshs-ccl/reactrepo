@@ -41,7 +41,7 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-docker build -t dev-scrum-frontend:latest /home/ubuntu/angulartesting   # adjust path as needed
+docker build -t dev-scrum-frontend:latest /home/ubuntu/reactrepo   # adjust path as needed
 
 echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
