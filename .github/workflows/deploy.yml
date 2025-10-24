@@ -41,24 +41,24 @@ jobs:
         working-directory: terraform
         run: terraform apply -auto-approve
 
-      # 6. Get ECR repository URL safely
+     # Get ECR URL cleanly
       - name: Get ECR URL
         id: ecr
         working-directory: terraform
         run: |
-          ECR_URL=$(terraform output -raw ecr_repository_url | tr -d '\r\n')
+          ECR_URL=$(terraform output -raw ecr_repository_url | tail -n1)
           echo "ECR_URL=$ECR_URL" >> $GITHUB_ENV
-          echo "ECR_URL=$ECR_URL"  # debug output
+          echo "ECR_URL=$ECR_URL"  # debug
 
-      # 7. Login to Amazon ECR
+# Login to ECR
       - name: Login to Amazon ECR
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
           docker login --username AWS --password-stdin ${{ env.ECR_URL }}
-
-      # 8. Build Docker image
-      - name: Build Docker image
-        run: docker build -t dev-react-frontend:latest .
+      
+            # 8. Build Docker image
+            - name: Build Docker image
+              run: docker build -t dev-react-frontend:latest .
 
       # 9. Tag Docker image for ECR
       - name: Tag Docker image
