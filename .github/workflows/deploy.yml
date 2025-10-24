@@ -1,4 +1,4 @@
-name: Trigger Terraform for React Build and Push
+name: Trigger Terraform for React Build & ECR Push
 
 on:
   push:
@@ -33,10 +33,10 @@ jobs:
 
       # 4️⃣ Initialize Terraform
       - name: Terraform Init
-        working-directory: ./terraform
         run: terraform init
+        working-directory: ./reactrepo/terraform
 
-      # 5️⃣ Apply Terraform (builds & pushes Docker image)
+      # 5️⃣ Apply Terraform (will create ECR + build/push Docker)
       - name: Terraform Apply
-        working-directory: ./terraform
         run: terraform apply -auto-approve
+        working-directory: ./reactrepo/terraform
