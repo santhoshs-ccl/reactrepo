@@ -13,7 +13,7 @@ jobs:
       AWS_REGION: us-east-1
 
     steps:
-      # 1️⃣ Checkout code
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -33,10 +33,10 @@ jobs:
 
       # 4️⃣ Initialize Terraform
       - name: Terraform Init
-        run: terraform init
         working-directory: ./reactrepo/terraform
+        run: terraform init
 
       # 5️⃣ Apply Terraform (automatically builds & pushes Docker image)
       - name: Terraform Apply
+        working-directory: ./reactrepo/terraform
         run: terraform apply -auto-approve
-        working-directory: ./terraform
