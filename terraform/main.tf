@@ -1,3 +1,4 @@
+main.tf 
 terraform {
   required_providers {
     aws = {
@@ -6,60 +7,35 @@ terraform {
     }
   }
 }
-
 provider "aws" {
   region = "us-east-1"
 }
-
-# -----------------------------
-# Create a new ECR repository
-# -----------------------------
-resource "aws_ecr_repository" "frontend_new" {
-  name = "dev-new-react-frontend" # New repository name
+# 1️⃣ Create ECR repository
+resource "aws_ecr_repository" "frontend" {
+  name = "dev-scrum-frontend"
 }
-
-# --------------------------------------------
-# Trigger Docker push after repo creation
-# --------------------------------------------
+# 2️⃣ Build & push Docker image to ECR after repo is created
 resource "null_resource" "docker_push" {
-  # Trigger whenever the ECR URL changes
-  triggers = {
-    ecr_url = aws_ecr_repository.frontend_new.repository_url
-  }
-
+  depends_on = [aws_ecr_repository.frontend]
   provisioner "local-exec" {
     command = <<EOT
 #!/bin/bash
 set -e
-
-# Get the ECR URL from triggers
-ECR_URL="${self.triggers.ecr_url}"
-
+# Get ECR repository URL
+ECR_URL=${aws_ecr_repository.frontend.repository_url}
 echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
-
-# Optional: enable BuildKit for faster builds
-export DOCKER_BUILDKIT=1
-
 echo "Building Docker image..."
-# Make sure Dockerfile is in the parent directory of terraform/
-docker build -t dev-new-react-frontend:latest ..
-
+docker build -t dev-scrum-frontend:latest /home/ubuntu/angulartesting   #change directories only
 echo "Tagging Docker image..."
-docker tag dev-new-react-frontend:latest $ECR_URL:latest
-
+docker tag dev-scrum-frontend:latest $ECR_URL:latest
 echo "Pushing Docker image..."
 docker push $ECR_URL:latest
 EOT
     interpreter = ["/bin/bash", "-c"]
   }
 }
-
-# -----------------------------
-# Output the ECR URL
-# -----------------------------
+# 3️⃣ Output the ECR URL
 output "ecr_repository_url" {
-  value       = aws_ecr_repository.frontend_new.repository_url
-  description = "ECR repository URL for frontend Docker image"
-  sensitive   = false
+  value = aws_ecr_repository.frontend.repository_url
 }
