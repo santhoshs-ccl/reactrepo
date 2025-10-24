@@ -12,16 +12,16 @@ provider "aws" {
 }
 
 # Create a new ECR repository
-resource "aws_ecr_repository" "frontend" {
-  name = "dev-new-react-frontend"   # <-- new repo name
+resource "aws_ecr_repository" "frontend_new" {
+  name = "dev-new-react-frontend"   # NEW repository name
+  force_delete = false              # Keep old images safe
 }
 
-# Trigger Docker push after repo creation
+# Trigger Docker push after repo creation or repo URL change
 resource "null_resource" "docker_push" {
-  depends_on = [aws_ecr_repository.frontend]
-
+  # Run whenever the ECR URL changes
   triggers = {
-    ecr_url = aws_ecr_repository.frontend.repository_url
+    ecr_url = aws_ecr_repository.frontend_new.repository_url
   }
 
   provisioner "local-exec" {
@@ -29,16 +29,13 @@ resource "null_resource" "docker_push" {
 #!/bin/bash
 set -e
 
-# Get the ECR URL from triggers
 ECR_URL="${self.triggers.ecr_url}"
 
 echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
-# Enable BuildKit (optional)
-export DOCKER_BUILDKIT=1
-
 echo "Building Docker image..."
+# Make sure Dockerfile path is correct
 docker build -t dev-new-react-frontend:latest ..
 
 echo "Tagging Docker image..."
@@ -51,9 +48,10 @@ EOT
   }
 }
 
-# Output the ECR URL in CI/CD-friendly format
+# Output the new ECR URL
 output "ecr_repository_url" {
-  value       = aws_ecr_repository.frontend.repository_url
+  value       = aws_ecr_repository.frontend_new.repository_url
   description = "ECR repository URL for frontend Docker image"
   sensitive   = false
 }
+
