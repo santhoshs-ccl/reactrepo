@@ -13,11 +13,21 @@ jobs:
       AWS_REGION: us-east-1
 
     steps:
-      # 1. Checkout code
+      # 1. Checkout repo
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Configure AWS credentials
+      # 2. Show repo structure for debugging
+      - name: Debug: List repo files
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Files in repo root:"
+          ls -l
+          echo "Check if terraform folder exists:"
+          ls -l terraform || echo "terraform folder not found!"
+
+      # 3. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -25,18 +35,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3. Setup Terraform
+      # 4. Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.7.5  # stable version
 
-      # 4. Terraform init
+      # 5. Terraform init
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # 5. Terraform apply
+      # 6. Terraform apply
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve
