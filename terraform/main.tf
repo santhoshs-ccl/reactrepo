@@ -11,14 +11,14 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Create ECR repository (use force_delete=false to avoid accidental deletion)
+# 1️⃣ Create ECR repository (new unique name, no force deletion)
 resource "aws_ecr_repository" "frontend" {
-  name         = "dev-scrum-frontend-v2"  # use a new unique name to prevent conflicts
+  name                 = "dev-scrum-frontend-v2"  # new unique name
   image_tag_mutability = "MUTABLE"
-  force_delete = false   # prevents Terraform from deleting repo if images exist
+  force_delete         = false   # prevents deletion if images exist
 }
 
-# 2️⃣ Build & push Docker image to ECR after repo is created
+# 2️⃣ Build & push Docker image to ECR after repo creation
 resource "null_resource" "docker_push" {
   depends_on = [aws_ecr_repository.frontend]
 
@@ -31,7 +31,7 @@ resource "null_resource" "docker_push" {
 #!/bin/bash
 set -e
 
-# Enable Docker BuildKit (recommended)
+# Enable Docker BuildKit
 export DOCKER_BUILDKIT=1
 
 # Get ECR repository URL
@@ -41,7 +41,8 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-docker build -t dev-scrum-frontend:latest /home/ubuntu/reactrepo   # adjust path as needed
+# Use relative path from Terraform working directory
+docker build -t dev-scrum-frontend:latest ../   # Adjust if Dockerfile is elsewhere
 
 echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
