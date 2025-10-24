@@ -6,70 +6,42 @@ on:
       - main
 
 jobs:
-  terraform-docker:
+  deploy:
     runs-on: ubuntu-latest
-
-    env:
-      AWS_REGION: us-east-1
-
     steps:
-      # 1. Checkout repo
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 2. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: us-east-1
 
-      # 3. Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.7.6
 
-      # 4. Terraform Init
       - name: Terraform Init
-        working-directory: terraform
         run: terraform init
 
-      # 5. Terraform Apply
       - name: Terraform Apply
-        working-directory: terraform
         run: terraform apply -auto-approve
 
-     # Get ECR URL cleanly
       - name: Get ECR URL
         id: ecr
-        working-directory: terraform
         run: |
-          # Get Terraform output in JSON
-          ECR_URL=$(terraform output -json ecr_repository_url | jq -r '.')
+          ECR_URL=$(terraform output -raw ecr_repository_url)
           echo "ECR_URL=$ECR_URL" >> $GITHUB_ENV
-          echo "ECR_URL=$ECR_URL"
 
-# Login to ECR
-      - name: Login to Amazon ECR
+      - name: Login to ECR
         run: |
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
-          docker login --username AWS --password-stdin ${{ env.ECR_URL }}
-      
-            # 8. Build Docker image
-            - name: Build Docker image
-              run: docker build -t dev-react-frontend:latest .
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ env.ECR_URL }}
 
-      # 9. Tag Docker image for ECR
-      - name: Tag Docker image
-        run: docker tag dev-react-frontend:latest ${{ env.ECR_URL }}:latest
-
-      # 10. Push Docker image to ECR
-      - name: Push Docker image
-        run: docker push ${{ env.ECR_URL }}:latest
-
-      # 11. Optional future steps: e.g., deploy to ECS or update service
-      # - name: Deploy to ECS
-      #   run: |
-      #     echo "Here you can add future steps like ECS service update"
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t my-frontend:latest .
+          docker tag my-frontend:latest ${{ env.ECR_URL }}:latest
+          docker push ${{ env.ECR_URL }}:latest
