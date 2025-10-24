@@ -13,7 +13,7 @@ jobs:
       AWS_REGION: us-east-1
 
     steps:
-      # 1. Checkout code
+      # 1. Checkout repo
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -31,23 +31,26 @@ jobs:
         with:
           terraform_version: 1.7.5
 
-      # 4. Terraform init
+      # 4. Terraform Init
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # 5. Terraform apply
+      # 5. Terraform Apply
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve
 
-      # 6. Get ECR repository URL
+      # 6. Get ECR repository URL safely
       - name: Get ECR URL
         id: ecr
         working-directory: terraform
-        run: echo "ECR_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
+        run: |
+          ECR_URL=$(terraform output -raw ecr_repository_url | tr -d '\r\n')
+          echo "ECR_URL=$ECR_URL" >> $GITHUB_ENV
+          echo "ECR_URL=$ECR_URL"  # debug output
 
-      # 7. Login to ECR
+      # 7. Login to Amazon ECR
       - name: Login to Amazon ECR
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
@@ -61,6 +64,11 @@ jobs:
       - name: Tag Docker image
         run: docker tag dev-react-frontend:latest ${{ env.ECR_URL }}:latest
 
-      # 10. Push Docker image
+      # 10. Push Docker image to ECR
       - name: Push Docker image
         run: docker push ${{ env.ECR_URL }}:latest
+
+      # 11. Optional future steps: e.g., deploy to ECS or update service
+      # - name: Deploy to ECS
+      #   run: |
+      #     echo "Here you can add future steps like ECS service update"
