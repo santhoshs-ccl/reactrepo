@@ -13,29 +13,35 @@ provider "aws" {
 
 # Create ECR repository
 resource "aws_ecr_repository" "frontend" {
-  name = "dev-react-frontend"
+  name = "dev-test-react-frontend"
 }
 
-# Build & push Docker image to ECR after repo is created
+# Trigger Docker push after repo creation
 resource "null_resource" "docker_push" {
   depends_on = [aws_ecr_repository.frontend]
+
+  triggers = {
+    ecr_url = aws_ecr_repository.frontend.repository_url
+  }
 
   provisioner "local-exec" {
     command = <<EOT
 #!/bin/bash
 set -e
 
-# Get ECR repository URL
-ECR_URL=${aws_ecr_repository.frontend.repository_url}
+# Get the ECR URL from triggers
+ECR_URL="${self.triggers.ecr_url}"
 
 echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
+
 echo "Building Docker image..."
-docker build -t dev-react-frontend:latest /home/ubuntu/reactrepo
+# Point to parent directory where Dockerfile exists
+docker build -t dev-test-react-frontend:latest ..
 
 echo "Tagging Docker image..."
-docker tag dev-react-frontend:latest $ECR_URL:latest
+docker tag dev-test-react-frontend:latest $ECR_URL:latest
 
 echo "Pushing Docker image..."
 docker push $ECR_URL:latest
@@ -44,7 +50,9 @@ EOT
   }
 }
 
-# Output the ECR URL
+# Output the ECR URL in CI/CD-friendly format
 output "ecr_repository_url" {
-  value = aws_ecr_repository.frontend.repository_url
+  value       = aws_ecr_repository.frontend.repository_url
+  description = "ECR repository URL for frontend Docker image"
+  sensitive   = false
 }
