@@ -31,10 +31,9 @@ jobs:
 
       # 4. Terraform init
       - name: Terraform Init
-        working-directory: terraform
+        working-directory: ./terraform   # relative path in repo
         run: terraform init
-
-      # 5. Terraform apply
+      
       - name: Terraform Apply
-        working-directory: terraform
+        working-directory: ./terraform
         run: terraform apply -auto-approve
