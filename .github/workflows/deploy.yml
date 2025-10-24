@@ -33,10 +33,10 @@ jobs:
 
       # 4️⃣ Initialize Terraform
       - name: Terraform Init
-        working-directory: ./reactrepo/terraform
+        working-directory: ./terraform
         run: terraform init
 
-      # 5️⃣ Apply Terraform (automatically builds & pushes Docker image)
+      # 5️⃣ Apply Terraform (builds & pushes Docker image)
       - name: Terraform Apply
-        working-directory: ./reactrepo/terraform
+        working-directory: ./terraform
         run: terraform apply -auto-approve
