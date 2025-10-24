@@ -11,9 +11,9 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Create ECR repository
+# Create a new ECR repository
 resource "aws_ecr_repository" "frontend" {
-  name = "dev-test-react-frontend"
+  name = "dev-new-react-frontend"   # <-- new repo name
 }
 
 # Trigger Docker push after repo creation
@@ -35,13 +35,14 @@ ECR_URL="${self.triggers.ecr_url}"
 echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
+# Enable BuildKit (optional)
+export DOCKER_BUILDKIT=1
 
 echo "Building Docker image..."
-# Point to parent directory where Dockerfile exists
-docker build -t dev-test-react-frontend:latest ..
+docker build -t dev-new-react-frontend:latest ..
 
 echo "Tagging Docker image..."
-docker tag dev-test-react-frontend:latest $ECR_URL:latest
+docker tag dev-new-react-frontend:latest $ECR_URL:latest
 
 echo "Pushing Docker image..."
 docker push $ECR_URL:latest
