@@ -44,13 +44,17 @@ jobs:
           TF_LOG=ERROR terraform apply -auto-approve
 
        # 6. Get ECR URL safely
-      - name: Get ECR URL
+      - name: Get ECR URL safely
         id: ecr
         working-directory: terraform
         run: |
-          ECR_URL=$(terraform output -raw ecr_repository_url 2>/dev/null | head -n1)
+          # Get the plain value from terraform output
+          ECR_URL=$(terraform output ecr_repository_url | tr -d '"')
+          # Remove any whitespace or extra characters
+          ECR_URL=$(echo "$ECR_URL" | xargs)
           echo "ECR_URL=$ECR_URL" >> $GITHUB_ENV
           echo "ECR_URL=$ECR_URL"
+
 
       # 7. Login to ECR
       - name: Login to ECR
