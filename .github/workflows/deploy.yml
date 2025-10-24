@@ -1,4 +1,4 @@
-name: Trigger Terraform for React Build and Push
+name: Terraform Deployment
 
 on:
   push:
@@ -6,24 +6,18 @@ on:
       - main
 
 jobs:
-  terraform-deploy:
+  terraform:
     runs-on: ubuntu-latest
 
     env:
       AWS_REGION: us-east-1
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout repository
+      # 1. Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Set up Terraform
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.7.5
-
-      # 3️⃣ Configure AWS credentials
+      # 2. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -31,12 +25,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 4️⃣ Initialize Terraform
+      # 3. Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.6  # choose your version
+
+      # 4. Terraform init
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # 5️⃣ Apply Terraform (builds & pushes Docker image)
+      # 5. Terraform apply
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve
