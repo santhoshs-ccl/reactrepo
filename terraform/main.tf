@@ -29,7 +29,7 @@ EOT
   ]
 }
 
-# 2️⃣ Create ECR repo only if missing
+# 2️⃣ Create ECR only if missing
 resource "aws_ecr_repository" "frontend" {
   count = data.external.check_ecr.result.exists == "true" ? 0 : 1
 
@@ -38,13 +38,14 @@ resource "aws_ecr_repository" "frontend" {
   force_delete         = false
 }
 
-# 3️⃣ Determine repository URL
+# 3️⃣ Determine ECR URL (existing or created)
 locals {
   ecr_url = data.external.check_ecr.result.exists == "true" ?
-            aws_ecr_repository.frontend[0].repository_url : ""
+            aws_ecr_repository.frontend[0].repository_url :
+            aws_ecr_repository.frontend[0].repository_url
 }
 
-# 4️⃣ Build & push Docker image
+# 4️⃣ Docker build & push
 resource "null_resource" "docker_push" {
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
@@ -54,17 +55,12 @@ resource "null_resource" "docker_push" {
     command = <<EOT
 #!/bin/bash
 set -e
-
 export DOCKER_BUILDKIT=1
 
-# If ECR repo was created, get its URL; else use existing
-if [ "${data.external.check_ecr.result.exists}" == "true" ]; then
-  ECR_URL=$(aws ecr describe-repositories --repository-names "dev-scrum-frontend" --query "repositories[0].repositoryUri" --output text)
-else
-  ECR_URL="${aws_ecr_repository.frontend[0].repository_url}"
-fi
+# Get repository URL
+ECR_URL=$(aws ecr describe-repositories --repository-names "dev-scrum-frontend" --query "repositories[0].repositoryUri" --output text)
 
-# Git commit hash for tag
+# Git commit hash for tagging
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -90,10 +86,8 @@ EOT
   }
 }
 
-# 5️⃣ Output ECR URL
+# 5️⃣ Output the repository URL
 output "ecr_repository_url" {
-  value       = data.external.check_ecr.result.exists == "true" ?
-                aws_ecr_repository.frontend[0].repository_url :
-                "Existing repository already present, fetch manually"
+  value       = aws_ecr_repository.frontend[0].repository_url
   description = "ECR repository URL for frontend Docker image"
 }
