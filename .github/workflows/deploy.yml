@@ -1,4 +1,4 @@
-name: Terraform CI/CD
+name: Terraform Deploy
 
 on:
   push:
@@ -8,30 +8,27 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      # 1️⃣ Checkout repo
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Setup Terraform latest version
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: latest   # ⚡ use latest
-          terraform_wrapper: true
+          terraform_version: 1.7.6
 
-      # 3️⃣ Configure AWS credentials
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # 4️⃣ Terraform init
       - name: Terraform Init
+        working-directory: ./terraform   # <-- point to folder containing main.tf
         run: terraform init
 
-      # 5️⃣ Terraform apply
       - name: Terraform Apply
+        working-directory: ./terraform   # <-- same folder
         run: terraform apply -auto-approve
