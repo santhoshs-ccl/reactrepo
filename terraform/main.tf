@@ -5,8 +5,12 @@ terraform {
       version = "~> 5.0"
     }
     null = {
-      source = "hashicorp/null"
+      source  = "hashicorp/null"
       version = "~> 3.0"
+    }
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
     }
   }
 }
@@ -15,33 +19,36 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Check if the ECR repository exists
-data "aws_ecr_repository" "existing" {
-  name = "dev-scrum-frontend"
-
-  # If it doesn't exist, ignore error
-  lifecycle {
-    ignore_errors = true
-  }
+# 1️⃣ Check if ECR repo exists using external script
+data "external" "check_ecr" {
+  program = ["bash", "-c", <<EOT
+repo_name="dev-scrum-frontend"
+if aws ecr describe-repositories --repository-names "$repo_name" --region us-east-1 > /dev/null 2>&1; then
+  echo "{\"exists\":\"true\"}"
+else
+  echo "{\"exists\":\"false\"}"
+fi
+EOT
+  ]
 }
 
-# 2️⃣ Create ECR repository if missing
+# 2️⃣ Create ECR only if it does not exist
 resource "aws_ecr_repository" "frontend_create" {
-  count = data.aws_ecr_repository.existing.id != "" ? 0 : 1
+  count = data.external.check_ecr.result.exists == "true" ? 0 : 1
+  name  = "dev-scrum-frontend"
 
-  name                 = "dev-scrum-frontend"
   image_tag_mutability = "MUTABLE"
   force_delete         = false
 }
 
-# 3️⃣ Determine ECR URL to use
+# 3️⃣ Determine which ECR URL to use
 locals {
-  ecr_url = data.aws_ecr_repository.existing.id != "" ?
-            data.aws_ecr_repository.existing.repository_url :
+  ecr_url = data.external.check_ecr.result.exists == "true" ?
+            aws_ecr_repository.frontend_create[0].repository_url : 
             aws_ecr_repository.frontend_create[0].repository_url
 }
 
-# 4️⃣ Build & push Docker image
+# 4️⃣ Docker build & push
 resource "null_resource" "docker_push" {
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
@@ -51,11 +58,12 @@ resource "null_resource" "docker_push" {
     command = <<EOT
 #!/bin/bash
 set -e
+export DOCKER_BUILDKIT=1
 
-export DOCKER_BUILDKIT=0  # disable if Buildx is missing, or 1 if installed
-ECR_URL="${local.ecr_url}"
+# Get repository URL
+ECR_URL=$(aws ecr describe-repositories --repository-names "dev-scrum-frontend" --query "repositories[0].repositoryUri" --output text)
 
-# Git commit hash for tag
+# Git commit hash for tagging
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -75,14 +83,14 @@ echo "Pushing Docker image..."
 docker push $ECR_URL:latest
 docker push $ECR_URL:$IMAGE_TAG
 
-echo "Docker images pushed: latest and $IMAGE_TAG"
+echo "✅ Docker images pushed: latest and $IMAGE_TAG"
 EOT
     interpreter = ["/bin/bash", "-c"]
   }
 }
 
-# 5️⃣ Output the ECR URL
+# 5️⃣ Output repository URL
 output "ecr_repository_url" {
-  value       = local.ecr_url
+  value       = ECR_URL
   description = "ECR repository URL for frontend Docker image"
 }
