@@ -16,30 +16,45 @@ provider "aws" {
 }
 
 # ----------------------------
-# 1️⃣ Create or use existing ECR
+# 1️⃣ Create ECR if missing
 # ----------------------------
-resource "aws_ecr_repository" "frontend" {
-  name                 = "dev-scrum-frontend"
-  image_tag_mutability = "MUTABLE"
-  force_delete         = false
+resource "null_resource" "ecr_create_if_missing" {
+  triggers = {
+    repo_name = "dev-scrum-frontend"
+  }
 
-  # Prevent accidental destroy of existing repo
-  lifecycle {
-    prevent_destroy = true
+  provisioner "local-exec" {
+    command = <<EOT
+#!/bin/bash
+set -e
+
+REPO_NAME="dev-scrum-frontend"
+
+# Check if repo exists
+if aws ecr describe-repositories --repository-names $REPO_NAME > /dev/null 2>&1; then
+  echo "ECR repository $REPO_NAME already exists."
+else
+  echo "Creating ECR repository $REPO_NAME..."
+  aws ecr create-repository --repository-name $REPO_NAME
+fi
+EOT
+    interpreter = ["/bin/bash", "-c"]
   }
 }
 
 # ----------------------------
-# 2️⃣ Local variable for ECR URL
+# 2️⃣ Determine ECR URL
 # ----------------------------
 locals {
-  ecr_url = aws_ecr_repository.frontend.repository_url
+  ecr_url = chomp(trimspace(shell("aws ecr describe-repositories --repository-names dev-scrum-frontend --query 'repositories[0].repositoryUri' --output text")))
 }
 
 # ----------------------------
 # 3️⃣ Build & push Docker image
 # ----------------------------
 resource "null_resource" "docker_push" {
+  depends_on = [null_resource.ecr_create_if_missing]
+
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
     ecr_url         = local.ecr_url
@@ -53,7 +68,7 @@ export DOCKER_BUILDKIT=1
 
 ECR_URL="${local.ecr_url}"
 
-# Use Git commit hash if available for tagging
+# Git commit hash for tagging
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
