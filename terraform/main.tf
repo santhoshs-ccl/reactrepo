@@ -11,16 +11,35 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# ✅ Use the existing ECR repository
-data "aws_ecr_repository" "frontend" {
-  name = "dev-scrum-frontend"   # use the already existing repo
+# 1️⃣ Try to read existing ECR repository (will fail if not exists)
+data "aws_ecr_repository" "frontend_existing" {
+  name = "dev-scrum-frontend"
+  # Prevent error if repo doesn't exist
+  lifecycle {
+    ignore_errors = true
+  }
 }
 
-# 2️⃣ Build & push Docker image to existing ECR repo
+# 2️⃣ Create ECR repository only if it doesn't exist
+resource "aws_ecr_repository" "frontend_create" {
+  count = data.aws_ecr_repository.frontend_existing.id == "" ? 1 : 0
+  name  = "dev-scrum-frontend"
+
+  image_tag_mutability = "MUTABLE"
+  force_delete         = false
+}
+
+# 3️⃣ Determine which URL to use
+locals {
+  ecr_url = data.aws_ecr_repository.frontend_existing.id != "" ?
+            data.aws_ecr_repository.frontend_existing.repository_url :
+            aws_ecr_repository.frontend_create[0].repository_url
+}
+
+# 4️⃣ Build & push Docker image
 resource "null_resource" "docker_push" {
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
-    code_hash       = filesha256("../src")
   }
 
   provisioner "local-exec" {
@@ -28,10 +47,8 @@ resource "null_resource" "docker_push" {
 #!/bin/bash
 set -e
 
-# Enable Docker BuildKit
 export DOCKER_BUILDKIT=1
-
-ECR_URL="${data.aws_ecr_repository.frontend.repository_url}"
+ECR_URL="${local.ecr_url}"
 
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
@@ -45,11 +62,10 @@ aws ecr get-login-password --region us-east-1 | docker login --username AWS --pa
 echo "Building Docker image..."
 docker build -t dev-scrum-frontend:latest ../
 
-echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
 docker tag dev-scrum-frontend:latest $ECR_URL:$IMAGE_TAG
 
-echo "Pushing Docker images..."
+echo "Pushing Docker image..."
 docker push $ECR_URL:latest
 docker push $ECR_URL:$IMAGE_TAG
 
@@ -59,18 +75,8 @@ EOT
   }
 }
 
-# Outputs
+# 5️⃣ Output ECR URL
 output "ecr_repository_url" {
-  value       = data.aws_ecr_repository.frontend.repository_url
+  value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
-}
-
-output "dockerfile_hash" {
-  value       = null_resource.docker_push.triggers.dockerfile_hash
-  description = "Dockerfile hash to trigger rebuild"
-}
-
-output "code_hash" {
-  value       = null_resource.docker_push.triggers.code_hash
-  description = "Source code hash to trigger rebuild"
 }
