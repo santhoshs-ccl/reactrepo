@@ -15,13 +15,17 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Try to read existing repo
+# ----------------------------
+# 1️⃣ Check if ECR exists
+# ----------------------------
 data "aws_ecr_repository" "existing" {
   count = 1
   name  = "dev-scrum-frontend"
 }
 
-# Create if missing
+# ----------------------------
+# 2️⃣ Create ECR only if missing
+# ----------------------------
 resource "aws_ecr_repository" "create_if_missing" {
   count = length(data.aws_ecr_repository.existing) > 0 ? 0 : 1
 
@@ -30,14 +34,18 @@ resource "aws_ecr_repository" "create_if_missing" {
   force_delete         = false
 }
 
-# Determine repository URL
+# ----------------------------
+# 3️⃣ Determine ECR URL (existing or created)
+# ----------------------------
 locals {
   ecr_url = length(data.aws_ecr_repository.existing) > 0 ? 
             data.aws_ecr_repository.existing[0].repository_url : 
             aws_ecr_repository.create_if_missing[0].repository_url
 }
 
-# Build & push Docker image
+# ----------------------------
+# 4️⃣ Build & push Docker image
+# ----------------------------
 resource "null_resource" "docker_push" {
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
@@ -51,7 +59,13 @@ set -e
 export DOCKER_BUILDKIT=1
 
 ECR_URL="${local.ecr_url}"
-IMAGE_TAG=$(git rev-parse --short HEAD || echo "latest")
+
+# Use Git commit hash if available
+if command -v git &> /dev/null; then
+  IMAGE_TAG=$(git rev-parse --short HEAD)
+else
+  IMAGE_TAG="latest"
+fi
 
 echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
@@ -72,7 +86,9 @@ EOT
   }
 }
 
-# Output
+# ----------------------------
+# 5️⃣ Output ECR URL
+# ----------------------------
 output "ecr_repository_url" {
   value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
