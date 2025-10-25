@@ -36,9 +36,22 @@ jobs:
         working-directory: terraform
         run: terraform init
 
-      # 5. Terraform Apply (automatically triggers Docker push)
+      # 5. Terraform Apply (pushes Docker image via Terraform)
       - name: Terraform Apply
         working-directory: terraform
         run: |
-          # Suppress debug logs to avoid wrapper pollution
           TF_LOG=ERROR terraform apply -auto-approve
+
+      # 6. Run Docker container from Terraform-pushed image
+      - name: Run Docker Container
+        run: |
+          # Get the full image URL (including tag) from Terraform output
+          IMAGE_URL=$(terraform -chdir=terraform output -raw ecr_image_url)
+
+          # Login to ECR so Docker can pull the image
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+            docker login --username AWS --password-stdin $(echo $IMAGE_URL | cut -d':' -f1)
+
+          # Pull and run the Docker container
+          docker pull $IMAGE_URL
+          docker run -d -p 3000:3000 $IMAGE_URL
