@@ -11,19 +11,24 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Create ECR repository (use force_delete=false to avoid accidental deletion)
-resource "aws_ecr_repository" "frontend" {
-  name                 = "dev-scrum-frontend-v2"  # unique repo name
-  image_tag_mutability = "MUTABLE"
-  force_delete         = false   # prevents deletion if images exist
+# Try to read the repo if it exists
+data "aws_ecr_repository" "frontend" {
+  name = "dev-scrum-frontend-v2"
 }
 
-# 2️⃣ Build & push Docker image to ECR after repo creation
-resource "null_resource" "docker_push" {
-  depends_on = [aws_ecr_repository.frontend]
+# Only create if not exists (ignore error if it exists)
+resource "aws_ecr_repository" "frontend_create" {
+  count                = length([for r in [data.aws_ecr_repository.frontend] : r if r.id == ""]) # 1 if repo does not exist
+  name                 = "dev-scrum-frontend-v2"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = false
+}
 
+# Build & push Docker image
+resource "null_resource" "docker_push" {
   triggers = {
-    ecr_url = aws_ecr_repository.frontend.repository_url
+    ecr_url = coalesce(data.aws_ecr_repository.frontend.repository_url,
+                        aws_ecr_repository.frontend_create[0].repository_url)
   }
 
   provisioner "local-exec" {
@@ -31,18 +36,15 @@ resource "null_resource" "docker_push" {
 #!/bin/bash
 set -e
 
-# Enable Docker BuildKit (recommended)
 export DOCKER_BUILDKIT=1
 
-# Get ECR repository URL
 ECR_URL="${self.triggers.ecr_url}"
 
 echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-# Adjust path to your Dockerfile location
-docker build -t dev-scrum-frontend:latest ../
+docker build -t dev-scrum-frontend:latest ../   # Adjust path to Dockerfile
 
 echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
@@ -54,9 +56,10 @@ EOT
   }
 }
 
-# 3️⃣ Output ECR repository URL
+# Output ECR URL
 output "ecr_repository_url" {
-  value       = aws_ecr_repository.frontend.repository_url
+  value       = coalesce(data.aws_ecr_repository.frontend.repository_url,
+                          aws_ecr_repository.frontend_create[0].repository_url)
   description = "ECR repository URL for frontend Docker image"
   sensitive   = false
 }
