@@ -5,7 +5,7 @@ terraform {
       version = "~> 5.0"
     }
     null = {
-      source  = "hashicorp/null"
+      source = "hashicorp/null"
       version = "~> 3.0"
     }
   }
@@ -15,33 +15,39 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Try to read existing ECR repository
-data "aws_ecr_repository" "frontend_existing" {
-  # This will fail if repo doesn't exist, so we handle that in the create step
-  for_each = try({ for r in ["dev-scrum-frontend"] : r => r }, {})
-  name     = each.key
+# 1️⃣ External check if ECR exists
+data "external" "check_ecr" {
+  program = ["bash", "-c", <<EOT
+repo_name="dev-scrum-frontend"
+aws ecr describe-repositories --repository-names "$repo_name" --region us-east-1 > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+  echo "{\"exists\":true}"
+else
+  echo "{\"exists\":false}"
+fi
+EOT
+  ]
 }
 
-# 2️⃣ Create ECR repository only if it doesn't exist
-resource "aws_ecr_repository" "frontend_create" {
-  for_each = length(keys(data.aws_ecr_repository.frontend_existing)) == 0 ? { "dev-scrum-frontend" = "dev-scrum-frontend" } : {}
+# 2️⃣ Create ECR repo only if missing
+resource "aws_ecr_repository" "frontend" {
+  count = data.external.check_ecr.result.exists == "true" ? 0 : 1
 
-  name                 = each.key
+  name                 = "dev-scrum-frontend"
   image_tag_mutability = "MUTABLE"
   force_delete         = false
 }
 
-# 3️⃣ Determine which ECR URL to use
+# 3️⃣ Determine repository URL
 locals {
-  ecr_url = length(keys(data.aws_ecr_repository.frontend_existing)) != 0 ?
-            data.aws_ecr_repository.frontend_existing["dev-scrum-frontend"].repository_url :
-            aws_ecr_repository.frontend_create["dev-scrum-frontend"].repository_url
+  ecr_url = data.external.check_ecr.result.exists == "true" ?
+            aws_ecr_repository.frontend[0].repository_url : ""
 }
 
 # 4️⃣ Build & push Docker image
 resource "null_resource" "docker_push" {
   triggers = {
-    dockerfile_hash = filesha256("../Dockerfile")  # Adjust path to your Dockerfile
+    dockerfile_hash = filesha256("../Dockerfile")
   }
 
   provisioner "local-exec" {
@@ -50,9 +56,15 @@ resource "null_resource" "docker_push" {
 set -e
 
 export DOCKER_BUILDKIT=1
-ECR_URL="${local.ecr_url}"
 
-# Use Git commit hash as image tag if available
+# If ECR repo was created, get its URL; else use existing
+if [ "${data.external.check_ecr.result.exists}" == "true" ]; then
+  ECR_URL=$(aws ecr describe-repositories --repository-names "dev-scrum-frontend" --query "repositories[0].repositoryUri" --output text)
+else
+  ECR_URL="${aws_ecr_repository.frontend[0].repository_url}"
+fi
+
+# Git commit hash for tag
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -63,9 +75,8 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-docker build -t dev-scrum-frontend:latest ../   # Adjust path to Dockerfile/context
+docker build -t dev-scrum-frontend:latest ../
 
-echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
 docker tag dev-scrum-frontend:latest $ECR_URL:$IMAGE_TAG
 
@@ -81,12 +92,8 @@ EOT
 
 # 5️⃣ Output ECR URL
 output "ecr_repository_url" {
-  value       = local.ecr_url
+  value       = data.external.check_ecr.result.exists == "true" ?
+                aws_ecr_repository.frontend[0].repository_url :
+                "Existing repository already present, fetch manually"
   description = "ECR repository URL for frontend Docker image"
-}
-
-# 6️⃣ Optional: Output Dockerfile hash for tracking
-output "dockerfile_hash" {
-  value       = null_resource.docker_push.triggers.dockerfile_hash
-  description = "Hash of Dockerfile used for last Docker push (changes trigger push)"
 }
