@@ -11,17 +11,16 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Use an existing ECR repository
+# ✅ Use the existing ECR repository
 data "aws_ecr_repository" "frontend" {
-  name = "dev-scrum-frontend"   # existing repository name
+  name = "dev-scrum-frontend"   # use the already existing repo
 }
 
 # 2️⃣ Build & push Docker image to existing ECR repo
-# Triggered when Dockerfile or source code changes
 resource "null_resource" "docker_push" {
   triggers = {
-    dockerfile_hash = filesha256("../Dockerfile")       # Dockerfile changes
-    code_hash       = filesha256("../src")             # source code changes
+    dockerfile_hash = filesha256("../Dockerfile")
+    code_hash       = filesha256("../src")
   }
 
   provisioner "local-exec" {
@@ -32,10 +31,8 @@ set -e
 # Enable Docker BuildKit
 export DOCKER_BUILDKIT=1
 
-# ECR repository URL
 ECR_URL="${data.aws_ecr_repository.frontend.repository_url}"
 
-# Image tag using Git commit hash (fallback to 'latest')
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -46,7 +43,7 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-docker build -t dev-scrum-frontend:latest ../   # adjust path to Dockerfile/context
+docker build -t dev-scrum-frontend:latest ../
 
 echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
@@ -62,19 +59,18 @@ EOT
   }
 }
 
-# 3️⃣ Output the ECR repository URL
+# Outputs
 output "ecr_repository_url" {
   value       = data.aws_ecr_repository.frontend.repository_url
   description = "ECR repository URL for frontend Docker image"
 }
 
-# 4️⃣ Output Dockerfile + source code hash to track changes
 output "dockerfile_hash" {
   value       = null_resource.docker_push.triggers.dockerfile_hash
-  description = "Hash of Dockerfile used for last Docker push (changes trigger push)"
+  description = "Dockerfile hash to trigger rebuild"
 }
 
 output "code_hash" {
   value       = null_resource.docker_push.triggers.code_hash
-  description = "Hash of source code folder used for last Docker push"
+  description = "Source code hash to trigger rebuild"
 }
