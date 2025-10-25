@@ -17,10 +17,11 @@ data "aws_ecr_repository" "frontend" {
 }
 
 # 2️⃣ Build & push Docker image to existing ECR repo
-# Triggered when Dockerfile or build context changes
+# Triggered when Dockerfile or source code changes
 resource "null_resource" "docker_push" {
   triggers = {
-    dockerfile_hash = filesha256("../Dockerfile")  # adjust path to Dockerfile
+    dockerfile_hash = filesha256("../Dockerfile")       # Dockerfile changes
+    code_hash       = filesha256("../src")             # source code changes
   }
 
   provisioner "local-exec" {
@@ -34,7 +35,7 @@ export DOCKER_BUILDKIT=1
 # ECR repository URL
 ECR_URL="${data.aws_ecr_repository.frontend.repository_url}"
 
-# Image tag using Git commit hash (versioned)
+# Image tag using Git commit hash (fallback to 'latest')
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -51,7 +52,7 @@ echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
 docker tag dev-scrum-frontend:latest $ECR_URL:$IMAGE_TAG
 
-echo "Pushing Docker image..."
+echo "Pushing Docker images..."
 docker push $ECR_URL:latest
 docker push $ECR_URL:$IMAGE_TAG
 
@@ -67,8 +68,13 @@ output "ecr_repository_url" {
   description = "ECR repository URL for frontend Docker image"
 }
 
-# 4️⃣ Optional: Output Dockerfile hash to track changes
+# 4️⃣ Output Dockerfile + source code hash to track changes
 output "dockerfile_hash" {
   value       = null_resource.docker_push.triggers.dockerfile_hash
   description = "Hash of Dockerfile used for last Docker push (changes trigger push)"
+}
+
+output "code_hash" {
+  value       = null_resource.docker_push.triggers.code_hash
+  description = "Hash of source code folder used for last Docker push"
 }
