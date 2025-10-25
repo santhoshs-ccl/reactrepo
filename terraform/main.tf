@@ -8,10 +8,6 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.0"
     }
-    external = {
-      source  = "hashicorp/external"
-      version = "~> 2.3"
-    }
   }
 }
 
@@ -19,7 +15,7 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Check if ECR repo exists using external script
+# 1️⃣ External check if ECR exists
 data "external" "check_ecr" {
   program = ["bash", "-c", <<EOT
 repo_name="dev-scrum-frontend"
@@ -32,26 +28,27 @@ EOT
   ]
 }
 
-# 2️⃣ Create ECR only if it does not exist
+# 2️⃣ Create ECR only if missing
 resource "aws_ecr_repository" "frontend_create" {
   count = data.external.check_ecr.result.exists == "true" ? 0 : 1
-  name  = "dev-scrum-frontend"
 
+  name                 = "dev-scrum-frontend"
   image_tag_mutability = "MUTABLE"
   force_delete         = false
 }
 
-# 3️⃣ Determine which ECR URL to use
+# 3️⃣ Determine ECR URL (existing or newly created)
 locals {
   ecr_url = data.external.check_ecr.result.exists == "true" ?
-            aws_ecr_repository.frontend_create[0].repository_url : 
+            chomp(trimspace(shell("aws ecr describe-repositories --repository-names dev-scrum-frontend --query 'repositories[0].repositoryUri' --output text"))) :
             aws_ecr_repository.frontend_create[0].repository_url
 }
 
-# 4️⃣ Docker build & push
+# 4️⃣ Build & push Docker image
 resource "null_resource" "docker_push" {
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
+    ecr_url         = local.ecr_url
   }
 
   provisioner "local-exec" {
@@ -60,10 +57,9 @@ resource "null_resource" "docker_push" {
 set -e
 export DOCKER_BUILDKIT=1
 
-# Get repository URL
-ECR_URL=$(aws ecr describe-repositories --repository-names "dev-scrum-frontend" --query "repositories[0].repositoryUri" --output text)
+ECR_URL="${local.ecr_url}"
 
-# Git commit hash for tagging
+# Use Git commit hash if available
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -89,8 +85,8 @@ EOT
   }
 }
 
-# 5️⃣ Output repository URL
+# 5️⃣ Output ECR URL
 output "ecr_repository_url" {
-  value       = ECR_URL
+  value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
 }
