@@ -16,26 +16,41 @@ provider "aws" {
 }
 
 ###############################
-# 1️⃣ Try to reference existing ECR repo
+# 1️⃣ Try to get existing ECR repository
 ###############################
-resource "aws_ecr_repository" "frontend" {
+data "aws_ecr_repository" "existing" {
   count = 1
+
+  name = "dev-scrum-frontend"
+
+  # Wrap in try() to avoid errors if repo doesn't exist
+  lifecycle {
+    ignore_errors = true
+  }
+}
+
+###############################
+# 2️⃣ Create ECR repository only if missing
+###############################
+resource "aws_ecr_repository" "create_if_missing" {
+  count = length(data.aws_ecr_repository.existing) > 0 ? 0 : 1
 
   name                 = "dev-scrum-frontend"
   image_tag_mutability = "MUTABLE"
   force_delete         = false
 }
 
-# We use try() to get the repository URL safely
+###############################
+# 3️⃣ Use existing or newly created repository URL
+###############################
 locals {
-  ecr_url = try(
-    aws_ecr_repository.frontend[0].repository_url,
-    ""  # fallback empty if somehow missing
-  )
+  ecr_url = length(data.aws_ecr_repository.existing) > 0 ?
+            data.aws_ecr_repository.existing[0].repository_url :
+            aws_ecr_repository.create_if_missing[0].repository_url
 }
 
 ###############################
-# 2️⃣ Build & push Docker image
+# 4️⃣ Build & push Docker image
 ###############################
 resource "null_resource" "docker_push" {
   triggers = {
@@ -73,7 +88,7 @@ EOT
 }
 
 ###############################
-# 3️⃣ Output ECR URL
+# 5️⃣ Output the repository URL
 ###############################
 output "ecr_repository_url" {
   value       = local.ecr_url
