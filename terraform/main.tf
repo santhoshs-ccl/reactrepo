@@ -15,13 +15,13 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Try to read existing repo
+# Try to read existing repo
 data "aws_ecr_repository" "existing" {
   count = 1
   name  = "dev-scrum-frontend"
 }
 
-# 2️⃣ Create repo only if it doesn't exist
+# Create if missing
 resource "aws_ecr_repository" "create_if_missing" {
   count = length(data.aws_ecr_repository.existing) > 0 ? 0 : 1
 
@@ -30,14 +30,14 @@ resource "aws_ecr_repository" "create_if_missing" {
   force_delete         = false
 }
 
-# 3️⃣ Determine repository URL
+# Determine repository URL
 locals {
-  ecr_url = length(data.aws_ecr_repository.existing) > 0 ?
-            data.aws_ecr_repository.existing[0].repository_url :
+  ecr_url = length(data.aws_ecr_repository.existing) > 0 ? 
+            data.aws_ecr_repository.existing[0].repository_url : 
             aws_ecr_repository.create_if_missing[0].repository_url
 }
 
-# 4️⃣ Build & push Docker
+# Build & push Docker image
 resource "null_resource" "docker_push" {
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
@@ -72,7 +72,7 @@ EOT
   }
 }
 
-# 5️⃣ Output
+# Output
 output "ecr_repository_url" {
   value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
