@@ -38,9 +38,7 @@ resource "aws_ecr_repository" "create_if_missing" {
 # 3️⃣ Determine ECR URL (existing or created)
 # ----------------------------
 locals {
-  ecr_url = length(data.aws_ecr_repository.existing) > 0 ? 
-            data.aws_ecr_repository.existing[0].repository_url : 
-            aws_ecr_repository.create_if_missing[0].repository_url
+  ecr_url = length(data.aws_ecr_repository.existing) > 0 ? data.aws_ecr_repository.existing[0].repository_url : aws_ecr_repository.create_if_missing[0].repository_url
 }
 
 # ----------------------------
