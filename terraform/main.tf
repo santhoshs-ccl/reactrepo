@@ -15,23 +15,13 @@ provider "aws" {
   region = "us-east-1"
 }
 
-###############################
-# 1️⃣ Try to get existing ECR repository
-###############################
+# 1️⃣ Try to read existing repo
 data "aws_ecr_repository" "existing" {
   count = 1
-
-  name = "dev-scrum-frontend"
-
-  # Wrap in try() to avoid errors if repo doesn't exist
-  lifecycle {
-    ignore_errors = true
-  }
+  name  = "dev-scrum-frontend"
 }
 
-###############################
-# 2️⃣ Create ECR repository only if missing
-###############################
+# 2️⃣ Create repo only if it doesn't exist
 resource "aws_ecr_repository" "create_if_missing" {
   count = length(data.aws_ecr_repository.existing) > 0 ? 0 : 1
 
@@ -40,18 +30,14 @@ resource "aws_ecr_repository" "create_if_missing" {
   force_delete         = false
 }
 
-###############################
-# 3️⃣ Use existing or newly created repository URL
-###############################
+# 3️⃣ Determine repository URL
 locals {
   ecr_url = length(data.aws_ecr_repository.existing) > 0 ?
             data.aws_ecr_repository.existing[0].repository_url :
             aws_ecr_repository.create_if_missing[0].repository_url
 }
 
-###############################
-# 4️⃣ Build & push Docker image
-###############################
+# 4️⃣ Build & push Docker
 resource "null_resource" "docker_push" {
   triggers = {
     dockerfile_hash = filesha256("../Dockerfile")
@@ -73,7 +59,6 @@ aws ecr get-login-password --region us-east-1 | docker login --username AWS --pa
 echo "Building Docker image..."
 docker build -t dev-scrum-frontend:latest ../
 
-echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
 docker tag dev-scrum-frontend:latest $ECR_URL:$IMAGE_TAG
 
@@ -87,9 +72,7 @@ EOT
   }
 }
 
-###############################
-# 5️⃣ Output the repository URL
-###############################
+# 5️⃣ Output
 output "ecr_repository_url" {
   value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
