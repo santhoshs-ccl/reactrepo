@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -11,35 +15,33 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Try to read existing ECR repository (will fail if not exists)
+# 1️⃣ Try to read existing ECR repository
 data "aws_ecr_repository" "frontend_existing" {
-  name = "dev-scrum-frontend"
-  # Prevent error if repo doesn't exist
-  lifecycle {
-    ignore_errors = true
-  }
+  # This will fail if repo doesn't exist, so we handle that in the create step
+  for_each = try({ for r in ["dev-scrum-frontend"] : r => r }, {})
+  name     = each.key
 }
 
 # 2️⃣ Create ECR repository only if it doesn't exist
 resource "aws_ecr_repository" "frontend_create" {
-  count = data.aws_ecr_repository.frontend_existing.id == "" ? 1 : 0
-  name  = "dev-scrum-frontend"
+  for_each = length(keys(data.aws_ecr_repository.frontend_existing)) == 0 ? { "dev-scrum-frontend" = "dev-scrum-frontend" } : {}
 
+  name                 = each.key
   image_tag_mutability = "MUTABLE"
   force_delete         = false
 }
 
-# 3️⃣ Determine which URL to use
+# 3️⃣ Determine which ECR URL to use
 locals {
-  ecr_url = data.aws_ecr_repository.frontend_existing.id != "" ?
-            data.aws_ecr_repository.frontend_existing.repository_url :
-            aws_ecr_repository.frontend_create[0].repository_url
+  ecr_url = length(keys(data.aws_ecr_repository.frontend_existing)) != 0 ?
+            data.aws_ecr_repository.frontend_existing["dev-scrum-frontend"].repository_url :
+            aws_ecr_repository.frontend_create["dev-scrum-frontend"].repository_url
 }
 
 # 4️⃣ Build & push Docker image
 resource "null_resource" "docker_push" {
   triggers = {
-    dockerfile_hash = filesha256("../Dockerfile")
+    dockerfile_hash = filesha256("../Dockerfile")  # Adjust path to your Dockerfile
   }
 
   provisioner "local-exec" {
@@ -50,6 +52,7 @@ set -e
 export DOCKER_BUILDKIT=1
 ECR_URL="${local.ecr_url}"
 
+# Use Git commit hash as image tag if available
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -60,8 +63,9 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-docker build -t dev-scrum-frontend:latest ../
+docker build -t dev-scrum-frontend:latest ../   # Adjust path to Dockerfile/context
 
+echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
 docker tag dev-scrum-frontend:latest $ECR_URL:$IMAGE_TAG
 
@@ -79,4 +83,10 @@ EOT
 output "ecr_repository_url" {
   value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
+}
+
+# 6️⃣ Optional: Output Dockerfile hash for tracking
+output "dockerfile_hash" {
+  value       = null_resource.docker_push.triggers.dockerfile_hash
+  description = "Hash of Dockerfile used for last Docker push (changes trigger push)"
 }
