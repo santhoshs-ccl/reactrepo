@@ -16,9 +16,27 @@ provider "aws" {
 }
 
 # ----------------------------
-# 1️⃣ Create ECR if missing
+# 1️⃣ External data source to get ECR URL
+# ----------------------------
+data "external" "ecr_info" {
+  program = ["bash", "-c", <<EOT
+repo="dev-scrum-frontend"
+url=$(aws ecr describe-repositories --repository-names $repo --query "repositories[0].repositoryUri" --output text 2>/dev/null || echo "")
+if [ -z "$url" ]; then
+  echo "{\"exists\":\"false\",\"url\":\"\"}"
+else
+  echo "{\"exists\":\"true\",\"url\":\"$url\"}"
+fi
+EOT
+  ]
+}
+
+# ----------------------------
+# 2️⃣ Create ECR if missing
 # ----------------------------
 resource "null_resource" "ecr_create_if_missing" {
+  count = data.external.ecr_info.result.exists == "true" ? 0 : 1
+
   triggers = {
     repo_name = "dev-scrum-frontend"
   }
@@ -27,30 +45,31 @@ resource "null_resource" "ecr_create_if_missing" {
     command = <<EOT
 #!/bin/bash
 set -e
-
-REPO_NAME="dev-scrum-frontend"
-
-# Check if repo exists
-if aws ecr describe-repositories --repository-names $REPO_NAME > /dev/null 2>&1; then
-  echo "ECR repository $REPO_NAME already exists."
-else
-  echo "Creating ECR repository $REPO_NAME..."
-  aws ecr create-repository --repository-name $REPO_NAME
-fi
+aws ecr create-repository --repository-name dev-scrum-frontend
 EOT
     interpreter = ["/bin/bash", "-c"]
   }
 }
 
 # ----------------------------
-# 2️⃣ Determine ECR URL
+# 3️⃣ Determine ECR URL
 # ----------------------------
+data "external" "ecr_url_final" {
+  depends_on = [null_resource.ecr_create_if_missing]
+  program = ["bash", "-c", <<EOT
+repo="dev-scrum-frontend"
+url=$(aws ecr describe-repositories --repository-names $repo --query "repositories[0].repositoryUri" --output text)
+echo "{\"url\":\"$url\"}"
+EOT
+  ]
+}
+
 locals {
-  ecr_url = chomp(trimspace(shell("aws ecr describe-repositories --repository-names dev-scrum-frontend --query 'repositories[0].repositoryUri' --output text")))
+  ecr_url = data.external.ecr_url_final.result.url
 }
 
 # ----------------------------
-# 3️⃣ Build & push Docker image
+# 4️⃣ Build & push Docker image
 # ----------------------------
 resource "null_resource" "docker_push" {
   depends_on = [null_resource.ecr_create_if_missing]
@@ -68,7 +87,7 @@ export DOCKER_BUILDKIT=1
 
 ECR_URL="${local.ecr_url}"
 
-# Git commit hash for tagging
+# Use Git commit hash for tagging
 if command -v git &> /dev/null; then
   IMAGE_TAG=$(git rev-parse --short HEAD)
 else
@@ -95,7 +114,7 @@ EOT
 }
 
 # ----------------------------
-# 4️⃣ Output ECR URL
+# 5️⃣ Output ECR URL
 # ----------------------------
 output "ecr_repository_url" {
   value       = local.ecr_url
