@@ -11,20 +11,16 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Create ECR repository (keep name stable)
-resource "aws_ecr_repository" "frontend" {
-  name                 = "dev-scrum-frontend"  # stable repo name
-  image_tag_mutability = "MUTABLE"
-  force_delete         = false   # prevents deletion if images exist
+# 1️⃣ Use an existing ECR repository
+data "aws_ecr_repository" "frontend" {
+  name = "dev-scrum-frontend"   # existing repository name
 }
 
-# 2️⃣ Build & push Docker image to ECR after repo creation
-# Triggered only when Dockerfile or build context changes
+# 2️⃣ Build & push Docker image to existing ECR repo
+# Triggered when Dockerfile or build context changes
 resource "null_resource" "docker_push" {
-  depends_on = [aws_ecr_repository.frontend]
-
   triggers = {
-    dockerfile_hash = filesha256("../Dockerfile")   # change path if Dockerfile is elsewhere
+    dockerfile_hash = filesha256("../Dockerfile")  # adjust path to Dockerfile
   }
 
   provisioner "local-exec" {
@@ -36,7 +32,7 @@ set -e
 export DOCKER_BUILDKIT=1
 
 # ECR repository URL
-ECR_URL="${aws_ecr_repository.frontend.repository_url}"
+ECR_URL="${data.aws_ecr_repository.frontend.repository_url}"
 
 # Image tag using Git commit hash (versioned)
 if command -v git &> /dev/null; then
@@ -49,7 +45,7 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-docker build -t dev-scrum-frontend:latest ../   # Adjust path to Dockerfile/context
+docker build -t dev-scrum-frontend:latest ../   # adjust path to Dockerfile/context
 
 echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
@@ -65,15 +61,14 @@ EOT
   }
 }
 
-# 3️⃣ Output the ECR URL
+# 3️⃣ Output the ECR repository URL
 output "ecr_repository_url" {
-  value       = aws_ecr_repository.frontend.repository_url
+  value       = data.aws_ecr_repository.frontend.repository_url
   description = "ECR repository URL for frontend Docker image"
-  sensitive   = false
 }
 
-# 4️⃣ Optional: Output last pushed image tag
-output "docker_image_tag" {
+# 4️⃣ Optional: Output Dockerfile hash to track changes
+output "dockerfile_hash" {
   value       = null_resource.docker_push.triggers.dockerfile_hash
-  description = "Hash of Dockerfile used for last push (changes trigger push)"
+  description = "Hash of Dockerfile used for last Docker push (changes trigger push)"
 }
