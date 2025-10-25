@@ -11,32 +11,28 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ Try to read existing ECR repository
+# 1️⃣ Check if ECR repository already exists
 data "aws_ecr_repository" "frontend" {
-  name = "dev-scrum-frontend-v2"
-
-  # Optional: only works if repo exists, otherwise plan fails
-  # We'll handle with 'ignore_errors' pattern below using count
-  # We use try() to avoid errors if it doesn't exist
-  count = try(1, 0)  # placeholder, effectively always 1
+  count = 1
+  name  = "dev-scrum-frontend-v2"
 }
 
-# 2️⃣ Create ECR repository only if it does not exist
+# 2️⃣ Create ECR repository only if it does NOT exist
 resource "aws_ecr_repository" "frontend_create" {
-  count                = length(try(data.aws_ecr_repository.frontend, [])) == 0 ? 1 : 0
+  count                = length(data.aws_ecr_repository.frontend) == 0 ? 1 : 0
   name                 = "dev-scrum-frontend-v2"
   image_tag_mutability = "MUTABLE"
   force_delete         = false
 }
 
-# 3️⃣ Determine repo URL dynamically
+# 3️⃣ Determine the ECR URL to use
 locals {
-  ecr_url = length(try(data.aws_ecr_repository.frontend, [])) > 0 ?
+  ecr_url = length(data.aws_ecr_repository.frontend) > 0 ?
             data.aws_ecr_repository.frontend[0].repository_url :
             aws_ecr_repository.frontend_create[0].repository_url
 }
 
-# 4️⃣ Build & push Docker image
+# 4️⃣ Build & push Docker image to ECR
 resource "null_resource" "docker_push" {
   triggers = {
     ecr_url = local.ecr_url
@@ -55,7 +51,7 @@ echo "Logging in to ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
 
 echo "Building Docker image..."
-docker build -t dev-scrum-frontend:latest ../   # adjust path to Dockerfile
+docker build -t dev-scrum-frontend:latest ../   # Adjust path to your Dockerfile
 
 echo "Tagging Docker image..."
 docker tag dev-scrum-frontend:latest $ECR_URL:latest
@@ -67,8 +63,9 @@ EOT
   }
 }
 
-# 5️⃣ Output ECR URL
+# 5️⃣ Output the ECR repository URL
 output "ecr_repository_url" {
   value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
+  sensitive   = false
 }
