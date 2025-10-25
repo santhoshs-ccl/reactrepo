@@ -15,20 +15,21 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1️⃣ External check if ECR exists
+# 1️⃣ External data source to check if ECR exists and get its URL
 data "external" "check_ecr" {
   program = ["bash", "-c", <<EOT
 repo_name="dev-scrum-frontend"
-if aws ecr describe-repositories --repository-names "$repo_name" --region us-east-1 > /dev/null 2>&1; then
-  echo "{\"exists\":\"true\"}"
+url=$(aws ecr describe-repositories --repository-names "$repo_name" --query 'repositories[0].repositoryUri' --output text 2>/dev/null || echo "")
+if [ -n "$url" ]; then
+  echo "{\"exists\":\"true\", \"url\":\"$url\"}"
 else
-  echo "{\"exists\":\"false\"}"
+  echo "{\"exists\":\"false\", \"url\":\"\"}"
 fi
 EOT
   ]
 }
 
-# 2️⃣ Create ECR only if missing
+# 2️⃣ Create ECR if missing
 resource "aws_ecr_repository" "frontend_create" {
   count = data.external.check_ecr.result.exists == "true" ? 0 : 1
 
@@ -37,10 +38,10 @@ resource "aws_ecr_repository" "frontend_create" {
   force_delete         = false
 }
 
-# 3️⃣ Determine ECR URL (existing or newly created)
+# 3️⃣ Determine final ECR URL (existing or newly created)
 locals {
   ecr_url = data.external.check_ecr.result.exists == "true" ?
-            chomp(trimspace(shell("aws ecr describe-repositories --repository-names dev-scrum-frontend --query 'repositories[0].repositoryUri' --output text"))) :
+            data.external.check_ecr.result.url :
             aws_ecr_repository.frontend_create[0].repository_url
 }
 
@@ -85,7 +86,7 @@ EOT
   }
 }
 
-# 5️⃣ Output ECR URL
+# 5️⃣ Output ECR repository URL
 output "ecr_repository_url" {
   value       = local.ecr_url
   description = "ECR repository URL for frontend Docker image"
