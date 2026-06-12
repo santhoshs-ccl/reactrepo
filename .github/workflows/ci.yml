@@ -2,49 +2,42 @@ name: PR Check + Trigger Jenkins
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main]
   pull_request:
-    branches: [main, staging]
+    branches: [main]
 
 jobs:
-  # ── Fast pre-check before Jenkins picks it up ────────────────────────────
-  lint:
+  lint-and-static-check:
     name: Lint & static check
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          php-version: '8.2'
-          tools: composer
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: npm ci
 
-      - name: Run PHPStan
-        run: ./vendor/bin/phpstan analyse --no-progress
+      - name: Run ESLint
+        run: npm run lint
 
-      - name: Check code style
-        run: ./vendor/bin/pint --test
+      - name: Build
+        run: npm run build
 
-  # ── Trigger Jenkins pipeline after PR merge ──────────────────────────────
   trigger-jenkins:
     name: Trigger Jenkins
+    needs: lint-and-static-check
     runs-on: ubuntu-latest
-    needs: lint
-    if: github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     steps:
-      - name: Trigger via MCP server
-        env:
-          MCP_URL: ${{ secrets.MCP_SERVER_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Trigger Jenkins build
         run: |
-          curl -s -X POST "${MCP_URL}/tool/trigger_pipeline" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "branch": "${{ github.ref_name }}",
-              "reason": "github-push",
-              "triggered_by": "${{ github.actor }}"
-            }'
+          curl -f -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "http://${{ secrets.JENKINS_HOST }}/job/ccl-crystal-billz/build?token=BUILD_TOKEN"
